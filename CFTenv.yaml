@@ -1,0 +1,1336 @@
+---
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Alfresco-zez Stack'
+
+Metadata:
+  TemplateAuthor: "Abraham Ogba"
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: "Infrastructure deployment"
+        Parameters:
+          - "Environment"
+      - Label:
+          default: "alfresco-cft"
+        Parameters:
+          - "Stackname"
+          - "IamRole"
+    ParametersLabels:
+      Environment:
+        default: "Environment:"
+      StackName:
+        default: "alfresco"
+      IamRole:
+        default: "ec2-access-ecs"
+
+Parameters:
+  Environment:
+    Type: String
+    Default: "qa"
+    AllowedValues: [qa, dev]
+  StackName:
+    Type: String
+    Default: "alfresco"
+  AmiId:
+    Type: String
+    Default: "ami-099eea36c6bc666a9"
+  IamRole:
+    Type: String
+    Default: "ec2-access-ecs"
+
+Mappings:
+  environment:
+    qa:
+      VpcId: vpc-3407ba4c
+      VPCSubnet1: subnet-445ba919
+      VPCSubnet2: subnet-46aa3b22
+      SSLCert: "arn:aws:acm:us-east-1:187212085277:certificate/f6f82b33-4b58-47fb-9f4d-8984c93aae0c"
+      AlfrescologGroup: /ecs/qa-zez-alfresco
+      SharelogGroup: /ecs/qa-zez-share
+      DownloadlogGroup: /ecs/qa-zez-download
+      TokenlogGroup: /ecs/qa-zez-token
+      PdftronserverlogGroup: /ecs/qa-zez-pdftronserver
+      PdftronclientlogGroup: /ecs/qa-zez-pdftronclient
+
+    dev:
+      VpcId: vpc-0344f3d7fbe904f2a
+      VPCSubnet1: subnet-094b2028c130f5042
+      VPCSubnet2: subnet-0fea883f5a4d5394e
+      SSLCert: "arn:aws:acm:us-east-1:187212085277:certificate/f6f82b33-4b58-47fb-9f4d-8984c93aae0c"
+      AlfrescologGroup: /ecs/dev-zez-alfresco
+      SharelogGroup: /ecs/dev-zez-share
+      DownloadlogGroup: /ecs/dev-zez-download
+      TokenlogGroup: /ecs/dev-zez-token
+      PdftronserverlogGroup: /ecs/dev-zez-pdftronserver
+      PdftronclientlogGroup: /ecs/dev-zez-pdftronclient
+
+#Mappings:
+ # ogba QA ACCOUNT 
+# !!str 187212085277:
+#   us-east-1:
+#     VpcId: vpc-3407ba4c
+#     VPCSubnet1: subnet-445ba919
+#     VPCSubnet2: subnet-46aa3b22
+#     SSLCert: "arn:aws:acm:us-east-1:187212085277:certificate/f6f82b33-4b58-47fb-9f4d-8984c93aae0c"
+
+Resources:
+  Topic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Sub ${Environment}-alfresco-zez-alb
+      TopicName: !Sub ${Environment}-alfresco-zez-alb
+
+  LoadBalancerInternal:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-internal
+      Scheme: internal
+      Subnets:
+        - !FindInMap [environment, !Ref Environment, VPCSubnet1]
+        - !FindInMap [environment, !Ref Environment, VPCSubnet2]
+      SecurityGroups:
+        - !Ref Port443SG
+        - !Ref Port8080SG
+        - !Ref Port8090SG
+        - !Ref Port7180SG
+
+  LoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancerInternal
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !FindInMap [environment, !Ref Environment, SSLCert]
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlfrescoTargetGroup
+
+  LoadBalancerListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancerInternal
+      Port: 8080
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref AlfrescoTargetGroup
+
+  ExternalLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internet-facing
+      Name: !Sub ${Environment}-alfresco-zez-public
+      Subnets:
+        - !FindInMap [environment, !Ref Environment, VPCSubnet1]
+        - !FindInMap [environment, !Ref Environment, VPCSubnet2]
+      SecurityGroups:
+        - !Ref Port443SG
+        - !Ref Port8080SG
+        - !Ref Port8090SG
+        - !Ref Port7180SG
+
+  ExternalLoadBalancerListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ExternalLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !FindInMap [environment, !Ref Environment, SSLCert]
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ExternalDownloadTargetGroup
+
+  AlfrescoTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-alfresco
+      VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+      Port: 8080
+      Protocol: HTTP
+      TargetType: instance
+      Matcher:
+        HttpCode: 302
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /alfresco
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 20
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+
+  ShareTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-share
+      VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      Matcher:
+        HttpCode: 302
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /share
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 20
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+
+  DownloadTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-download
+      VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      Matcher:
+        HttpCode: 302
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /downloadservice
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 20
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+
+  ExternalDownloadTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-download-ext
+      VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      Matcher:
+        HttpCode: 302
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /downloadservice
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 20
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+
+  TokenTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-token
+      VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      Matcher:
+        HttpCode: 302
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /tokenservice
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 20
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+
+  PDFTronServerTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub ${Environment}-alfresco-zez-pdftronserver
+      VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+      Port: 8090
+      Protocol: HTTP
+      TargetType: instance
+      Matcher:
+        HttpCode: 404
+      HealthCheckIntervalSeconds: 10
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: 20
+        - Key: stickiness.enabled
+          Value: true
+        - Key: stickiness.type
+          Value: lb_cookie
+        - Key: stickiness.lb_cookie.duration_seconds
+          Value: 86400
+
+  PDFTronClientTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+       Name: !Sub ${Environment}-alfresco-zez-pdftronclient
+       VpcId: !FindInMap [environment, !Ref Environment, VpcId]
+       Port: 8080
+       Protocol: HTTP
+       TargetType: ip
+       Matcher:
+         HttpCode: 302
+       HealthCheckIntervalSeconds: 10
+       HealthCheckPath: /
+       HealthCheckProtocol: HTTP
+       HealthCheckTimeoutSeconds: 5
+       HealthyThresholdCount: 2
+       UnhealthyThresholdCount: 2
+       TargetGroupAttributes:
+         - Key: deregistration_delay.timeout_seconds
+           Value: 20
+         - Key: stickiness.enabled
+           Value: true
+         - Key: stickiness.type
+           Value: lb_cookie
+         - Key: stickiness.lb_cookie.duration_seconds
+           Value: 86400
+
+  PreviewListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: PDFTronClientTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /preview/*
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 1
+
+  LibListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: PDFTronClientTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /lib/*
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 2
+
+  DataListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: PDFTronServerTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /data/*
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 3
+
+  BlackBoxListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+             Ref: PDFTronServerTargetGroup
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /blackbox/*
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 4
+
+  AlfrescoListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: AlfrescoTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-zez-", !Ref "Environment", ".oscarose.org"]] 
+            #- alfresco-zez-qa.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 5
+
+  ShareListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: ShareTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-share-", !Ref "Environment", ".srrcbsb.org"]]
+            #- alfresco-share-zez-qa.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 6
+
+  TokenListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: TokenTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-tokenservices-zez-", !Ref "Environment", ".oscarose.org"]]
+            #- alfresco-tokenservice-zez-qa.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 7
+
+  DownloadListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref DownloadTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-zez-downloadservice-", !Ref "Environment", ".oscarose.org"]]
+            #- alfresco-zez-downloadservice-qa.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 8
+
+  AlfrescoListenerRuleInternal:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: AlfrescoTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-zez-", !Ref "Environment", "-internal.oscarose.org"]]
+            #- alfresco-zez-qa-internal.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 9
+
+  ShareListenerRuleInternal:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: ShareTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-share-zez-", !Ref "Environment", "-internal.oscarose.org"]]
+           # - alfresco-share-zez-qa-internal.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 10
+
+  TokenListenerRuleInternal:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn:
+            Ref: TokenTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-tokenservice-zez-", !Ref "Environment", "-internal.oscarose.org"]]
+            #- alfresco-tokenservice-zez-qa-internal.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 11
+
+  DownloadListenerRuleInternal:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref DownloadTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-zez-downloadservice-", !Ref "Environment", "-internal.oscarose.org"]]
+            #- alfresco-zez-downloadservice-qa-internal.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 12
+
+  TronWebServerListenerRule:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref PDFTronClientTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-zez-tronwebserver-", !Ref "Environment", ".oscarose.org"]]
+            #- alfresco-zez-tronwebserver-qa.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 13
+
+  TronWebServerListenerRuleIternal:
+    Type: "AWS::ElasticLoadBalancingV2::ListenerRule"
+    DependsOn: LoadBalancerListener
+    Properties:
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref PDFTronClientTargetGroup
+      Conditions:
+        - Field: host-header
+          Values:
+            - !Join ["", ["alfresco-zez-tronwebserver-", !Ref "Environment", "-internal.oscarose.org"]]
+            #- alfresco-zez-tronwebserver-qa-internal.oscarose.org
+      ListenerArn: !Ref LoadBalancerListener
+      Priority: 14
+
+  Port22SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable SSH
+      VpcId: !FindInMap [environment, !Ref "Environment", VpcId]
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '22'
+        ToPort: '22'
+        CidrIp: 10.0.0.0/8
+  
+  Port8090SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable pdftronserver port
+      VpcId: !FindInMap [environment, !Ref "Environment", VpcId]
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '8090'
+        ToPort: '8090'
+        CidrIp: 10.0.0.0/8
+
+  Port7180SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable alfresco port
+      VpcId: !FindInMap [environment, !Ref "Environment", VpcId]
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '7180'
+        ToPort: '7180'
+        CidrIp: 10.0.0.0/8
+
+  Port443SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable HTTPS
+      VpcId: !FindInMap [environment, !Ref "Environment", VpcId]
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: '443'
+        ToPort: '443'
+        CidrIp: 10.0.0.0/8
+
+  Port8080SG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable alfresco service port
+      VpcId: !FindInMap [environment, !Ref "Environment", VpcId]
+      SecurityGroupIngress:
+      - IpProtocol: 'tcp'
+        FromPort: 8080
+        ToPort: 8080
+        CidrIp: 10.0.0.0/8
+
+  HTTPCodeELB5XXTooHighAlarmInternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-HTTPCodeELB5XXTooHighAlarmInternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez internal application load balancer returns 5XX HTTP status codes
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: HTTPCode_ELB_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt LoadBalancerInternal.LoadBalancerFullName
+
+  HTTPCodeTarget5XXTooHighAlarmInternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-HTTPCodeTarget5XXTooHighAlarmInternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez internal application load balancer receives 5XX HTTP status codes from targets
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: HTTPCode_Target_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt LoadBalancerInternal.LoadBalancerFullName
+
+  RejectedConnectionCountTooHighAlarmInternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-RejectedConnectionCountTooHighAlarmInternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez internal application load balancer rejected connections because the load balancer had reached its maximum number of connections
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: RejectedConnectionCount
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt LoadBalancerInternal.LoadBalancerFullName
+
+  TargetConnectionErrorCountTooHighAlarmInternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-TargetConnectionErrorCountTooHighAlarmInternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez internal Application load balancer could not connect to targets
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: TargetConnectionErrorCount
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt LoadBalancerInternal.LoadBalancerFullName
+
+  HTTPCodeELB5XXTooHighAlarmExternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-HTTPCodeELB5XXTooHighAlarmExternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez External application load balancer returns 5XX HTTP status codes
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: HTTPCode_ELB_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt ExternalLoadBalancer.LoadBalancerFullName
+
+  HTTPCodeTarget5XXTooHighAlarmExternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-HTTPCodeTarget5XXTooHighAlarmExternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez External application load balancer receives 5XX HTTP status codes from targets
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: HTTPCode_Target_5XX_Count
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt ExternalLoadBalancer.LoadBalancerFullName
+
+  RejectedConnectionCountTooHighAlarmExternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-RejectedConnectionCountTooHighAlarmExternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez External application load balancer rejected connections because the load balancer had reached its maximum number of connections
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: RejectedConnectionCount
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt ExternalLoadBalancer.LoadBalancerFullName
+
+  TargetConnectionErrorCountTooHighAlarmExternal:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: !Sub ${Environment}-alfresco-zez-TargetConnectionErrorCountTooHighAlarmExternal
+      AlarmDescription: !Sub ${Environment}-alfresco-zez External Application load balancer could not connect to targets
+      TreatMissingData: notBreaching
+      Namespace: 'AWS/ApplicationELB'
+      MetricName: TargetConnectionErrorCount
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      ComparisonOperator: GreaterThanThreshold
+      Threshold: 0
+      AlarmActions:
+      - !Ref Topic
+      Dimensions:
+      - Name: LoadBalancer
+        Value: !GetAtt ExternalLoadBalancer.LoadBalancerFullName
+
+  ECSCLUSTER:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub ${Environment}-alfresco-zez
+      Tags:
+        - Key: OS_Vendor
+          Value: Centos7
+        - Key: CostCenter
+          Value: ogba
+        - Key: OS
+          Value: Linux
+        - Key: VPC
+          Value: !Ref Environment
+        - Key: Environment
+          Value: noneprod
+        - Key: Component
+          Value: !Sub ${Environment}-alfresco-zez
+        - Key: Name
+          Value: !Sub ${Environment}-alfresco-zez
+
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      RoleName: !Sub ${Environment}-alfresco-zez-ECSRole
+      AssumeRolePolicyDocument: |
+        {
+            "Statement": [{
+                "Action": "sts:AssumeRole",
+                "Effect": "Allow",
+                "Principal": {
+                    "Service": "ecs-tasks.amazonaws.com"
+                }
+            }]
+        }
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+      Policies:
+        - PolicyName: !Sub ${Environment}-alfresco-zez-ecs-service
+          PolicyDocument: |
+            {
+                "Statement": [{
+                    "Effect": "Allow",
+                    "Action": [
+                        "ecr:*",
+                        "ssm:*",
+                        "s3:Put*",
+                        "s3:Get*",
+                        "cloudwatch:*",
+                        "logs:*"
+                    ],
+                    "Resource": "*"
+                }]
+            }
+  ECSServiceAutoScalingRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          Action:
+            - "sts:AssumeRole"
+          Effect: Allow
+          Principal:
+            Service:
+              - application-autoscaling.amazonaws.com
+      Path: /
+      Policies:
+        - PolicyName: ecs-service-autoscaling
+          PolicyDocument:
+            Statement:
+              Effect: Allow
+              Action:
+                - application-autoscaling:*
+                - cloudwatch:DescribeAlarms
+                - cloudwatch:PutMetricAlarm
+                - ecs:DescribeServices
+                - ecs:UpdateService
+              Resource: "*"
+  
+  AlfrescoTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${Environment}-zez-alfresco
+          Image: 187212085277.dkr.ecr.us-east-1.amazonaws.com/jenkins:1.0
+          PortMappings:
+            - ContainerPort: 8080
+            - ContainerPort: 7180
+          #Environment:
+            #- Name: JAVA_OPTS
+             # Value: "!Sub ${Name} External application load balancer rejected connections because the load balancer had reached its maximum number of connections"
+              #Value: -Xms2g -Xmx2g
+          Secrets:
+            - { Name: "JAVA_OPTS", ValueFrom: "arn:aws:ssm:us-east-1:187212085277:parameter/qa-alfresco" } 
+           # - Name: JAVA_OPTS
+            #  valueFrom: arn:aws:ssm:us-east-1:187212085277:parameter/qa-alfresco
+          Memory: 16000
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !FindInMap [environment, !Ref Environment, AlfrescologGroup]
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+      ExecutionRoleArn: !Ref ECSRole
+      Family: !Sub ${Environment}-zez-alfresco
+      NetworkMode: host
+      PlacementConstraints:
+        - Type: memberOf
+          Expression: attribute:Name == alfresco
+        - Type: memberOf
+          Expression: attribute:group == alfresco-server
+        - Type: memberOf
+          Expression: attribute:group == ec2-alfresco
+      RequiresCompatibilities:
+        - EC2
+      TaskRoleArn: !Ref ECSRole
+
+  AlfrescoService:
+    Type: AWS::ECS::Service
+    DependsOn: AlfrescoListenerRuleInternal
+    Properties:
+      ServiceName: !Sub ${Environment}-alfresco-alfresco
+      Cluster: !Ref ECSCLUSTER
+      LaunchType: EC2
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 60
+      TaskDefinition: !Ref AlfrescoTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${Environment}-zez-alfresco
+          ContainerPort: 8080
+          TargetGroupArn: !Ref AlfrescoTargetGroup
+
+  AlfrescoShareTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${Environment}-zez-share
+          Image: 187212085277.dkr.ecr.us-east-1.amazonaws.com/jenkins:1.0
+          PortMappings:
+            - ContainerPort: 8080
+          Environment:
+            - Name: JAVA_OPTS
+              Value: -Xms2g -Xmx2g
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !FindInMap [environment, !Ref Environment, SharelogGroup]
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+      Cpu: 1vCPU
+      ExecutionRoleArn: !Ref ECSRole
+      Family: !Sub ${Environment}-zez-share
+      Memory: 2GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref ECSRole
+
+  AlfrescoShareService:
+    Type: AWS::ECS::Service
+    DependsOn: ShareListenerRuleInternal
+    Properties:
+      ServiceName: !Sub ${Environment}-alfresco-share
+      Cluster: !Ref ECSCLUSTER
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref Port443SG
+            - !Ref Port8080SG
+            - !Ref Port8090SG
+            - !Ref Port7180SG
+            #- sg-cd58fbbb
+            #- sg-0e208378   
+          Subnets:
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet1]
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet2]
+      TaskDefinition: !Ref AlfrescoShareTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${Environment}-zez-share
+          ContainerPort: 8080
+          TargetGroupArn: !Ref ShareTargetGroup
+
+  AlfrescoTokenTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${Environment}-zez-token
+          Image: 187212085277.dkr.ecr.us-east-1.amazonaws.com/jenkins:1.0
+          PortMappings:
+            - ContainerPort: 8080
+          Environment:
+            - Name: JAVA_OPTS
+              Value: -Xms2g -Xmx2g
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !FindInMap [environment, !Ref Environment, TokenlogGroup]
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+      Cpu: 1vCPU
+      ExecutionRoleArn: !Ref ECSRole
+      Family: !Sub ${Environment}-zez-token
+      Memory: 2GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref ECSRole
+
+  AlfrescoTokenService:
+    Type: AWS::ECS::Service
+    DependsOn: TokenListenerRuleInternal
+    Properties:
+      ServiceName: !Sub ${Environment}-alfresco-token
+      Cluster: !Ref ECSCLUSTER
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref Port443SG
+            - !Ref Port8080SG
+            - !Ref Port8090SG
+            - !Ref Port7180SG
+            #- sg-cd58fbbb
+            #- sg-0e208378
+          Subnets:
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet1]
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet2]
+      TaskDefinition: !Ref AlfrescoTokenTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${Environment}-zez-token
+          ContainerPort: 8080
+          TargetGroupArn: !Ref TokenTargetGroup
+
+  AlfrescoDownloadTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${Environment}-zez-download
+          Image: 187212085277.dkr.ecr.us-east-1.amazonaws.com/jenkins:1.0
+          PortMappings:
+            - ContainerPort: 8080
+          Environment:
+            - Name: JAVA_OPTS
+              Value: -Xms2g -Xmx2g
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !FindInMap [environment, !Ref Environment, DownloadlogGroup]
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+      Cpu: 2vCPU
+      ExecutionRoleArn: !Ref ECSRole
+      Family: !Sub ${Environment}-zez-download
+      Memory: 4GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref ECSRole
+
+  AlfrescoDownloadService:
+    Type: AWS::ECS::Service
+    DependsOn: DownloadListenerRuleInternal
+    Properties:
+      ServiceName: !Sub ${Environment}-alfresco-download
+      Cluster: !Ref ECSCLUSTER
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref Port443SG
+            - !Ref Port8080SG
+            - !Ref Port8090SG
+            - !Ref Port7180SG
+            #- sg-cd58fbbb
+            #- sg-0e208378
+          Subnets:
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet1]
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet2]
+      TaskDefinition: !Ref AlfrescoDownloadTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${Environment}-zez-download
+          ContainerPort: 8080
+          TargetGroupArn: !Ref DownloadTargetGroup
+
+  AlfrescoPdftronClientTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${Environment}-zez-pdftronclient
+          Image: 187212085277.dkr.ecr.us-east-1.amazonaws.com/jenkins:1.0
+          PortMappings:
+            - ContainerPort: 8080
+          Environment:
+            - Name: JAVA_OPTS
+              Value: -Xms2g -Xmx2g
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !FindInMap [environment, !Ref Environment, PdftronclientlogGroup]
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+      Cpu: 1vCPU
+      ExecutionRoleArn: !Ref ECSRole
+      Family: !Sub ${Environment}-zez-pdftronclient
+      Memory: 2GB
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      TaskRoleArn: !Ref ECSRole
+
+  AlfrescoPdftronClientService:
+    Type: AWS::ECS::Service
+    DependsOn: TronWebServerListenerRule
+    Properties:
+      ServiceName: !Sub ${Environment}-alfresco-pdftronclient
+      Cluster: !Ref ECSCLUSTER
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 60
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          SecurityGroups:
+            - !Ref Port443SG
+            - !Ref Port8080SG
+            - !Ref Port8090SG
+            - !Ref Port7180SG
+            #- sg-cd58fbbb
+            #- sg-0e208378
+          Subnets:
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet1]
+            - !FindInMap [environment, !Ref "Environment", VPCSubnet2]
+      TaskDefinition: !Ref AlfrescoPdftronClientTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${Environment}-zez-pdftronclient
+          ContainerPort: 8080
+          TargetGroupArn: !Ref PDFTronClientTargetGroup
+
+  AlfrescoPdftronServerTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      ContainerDefinitions:
+        - Name: !Sub ${Environment}-zez-pdftronserver
+          Image: 187212085277.dkr.ecr.us-east-1.amazonaws.com/jenkins:1.0
+          PortMappings:
+            - ContainerPort: 8090
+          Environment:
+            - Name: JAVA_OPTS
+              Value: "!Sub ${Name} External application load balancer rejected connections because the load balancer had reached its maximum number of connections"
+              #Value: -Xms2g -Xmx2g
+          Memory: 16000
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !FindInMap [environment, !Ref Environment, PdftronserverlogGroup]
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+
+      Family: !Sub ${Environment}-zez-pdftronserver
+      NetworkMode: host
+      PlacementConstraints:
+        - Type: memberOf
+          Expression: attribute:Name == pdftron
+        - Type: memberOf
+          Expression: attribute:group == pdftron-server
+        - Type: memberOf
+          Expression: attribute:group == ec2-pdftron
+      RequiresCompatibilities:
+        - EC2
+
+  AlfrescoPdftronServerService:
+    Type: AWS::ECS::Service
+    DependsOn: DataListenerRule
+    Properties:
+      ServiceName: !Sub ${Environment}-alfresco-pdftronserver
+      Cluster: !Ref ECSCLUSTER
+      LaunchType: EC2
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+      DesiredCount: 0
+      HealthCheckGracePeriodSeconds: 60
+      TaskDefinition: !Ref AlfrescoPdftronServerTaskDefinition
+      LoadBalancers:
+        - ContainerName: !Sub ${Environment}-zez-pdftronserver
+          ContainerPort: 8090
+          TargetGroupArn: !Ref  PDFTronServerTargetGroup
+
+  EC2Instance1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0756fbca465a59a30
+      #AssociatePublicIpAddress: false
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            VolumeSize: "100"
+            VolumeType: "gp2"
+            DeleteOnTermination: true
+      KeyName: docker
+      SecurityGroupIds:
+        - !Ref Port443SG
+        - !Ref Port8080SG
+        - !Ref Port8090SG
+        - !Ref Port7180SG
+        - !Ref Port22SG
+        #- sg-cd58fbbb
+        #- sg-0e208378
+        #- sg-c230528b
+      InstanceType: t2.micro
+      IamInstanceProfile: ecs-role
+      SubnetId: !FindInMap [environment, !Ref "Environment", VPCSubnet1]
+      Tags:
+        - Key: "Name"
+          Value: !Sub ${Environment}-alfresco-1
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           yum install docker -y
+           service docker start
+           mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
+           mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
+           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
+           echo ECS_LOGFILE=/log/ecs-agent.log >> /etc/ecs/ecs.config
+           echo ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","awslogs"] >> /etc/ecs/ecs.config
+           echo ECS_LOGLEVEL=info >> /etc/ecs/ecs.config
+           docker run --name ecs-agent --detach=true --restart=on-failure:10 --volume=/var/run:/var/run --volume=/var/log/ecs/:/log --volume=/var/lib/ecs/data:/data --volume=/etc/ecs:/etc/ecs --net=host --env-file=/etc/ecs/ecs.config amazon/amazon-ecs-agent:latest
+
+  EC2Instance2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0756fbca465a59a30
+      #AssociatePublicIpAddress: false
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            VolumeSize: "100"
+            VolumeType: "gp2"
+            DeleteOnTermination: true
+      KeyName: docker
+      SecurityGroupIds:
+        - !Ref Port443SG
+        - !Ref Port8080SG
+        - !Ref Port8090SG
+        - !Ref Port7180SG
+        - !Ref Port22SG
+        #- sg-cd58fbbb
+        #- sg-0e208378
+        #- sg-c230528b
+      InstanceType: t2.micro
+      IamInstanceProfile: ecs-role
+      SubnetId: !FindInMap [environment, !Ref "Environment", VPCSubnet2]
+      Tags:
+        - Key: "Name"
+          Value: !Sub ${Environment}-alfresco-2
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           yum install docker -y
+           service docker start
+           mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
+           mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
+           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
+           echo ECS_LOGFILE=/log/ecs-agent.log >> /etc/ecs/ecs.config
+           echo ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","awslogs"] >> /etc/ecs/ecs.config
+           echo ECS_LOGLEVEL=info >> /etc/ecs/ecs.config
+           docker run --name ecs-agent --detach=true --restart=on-failure:10 --volume=/var/run:/var/run --volume=/var/log/ecs/:/log --volume=/var/lib/ecs/data:/data --volume=/etc/ecs:/etc/ecs --net=host --env-file=/etc/ecs/ecs.config amazon/amazon-ecs-agent:latest
+
+  EC2Instance3:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0756fbca465a59a30
+      #AssociatePublicIpAddress: false
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            VolumeSize: "100"
+            VolumeType: "gp2"
+            DeleteOnTermination: true
+      KeyName: docker
+      SecurityGroupIds:
+        - !Ref Port443SG
+        - !Ref Port8080SG
+        - !Ref Port8090SG
+        - !Ref Port7180SG
+        - !Ref Port22SG
+        #- sg-cd58fbbb
+        #- sg-0e208378
+        #- sg-c230528b
+      InstanceType: t2.micro
+      IamInstanceProfile: ecs-role
+      SubnetId: !FindInMap [environment, !Ref "Environment", VPCSubnet1]
+      Tags:
+        - Key: "Name"
+          Value: !Sub ${Environment}-pdftronserver-1
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           yum install docker -y
+           service docker start
+           mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
+           mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
+           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
+           echo ECS_LOGFILE=/log/ecs-agent.log >> /etc/ecs/ecs.config
+           echo ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","awslogs"] >> /etc/ecs/ecs.config
+           echo ECS_LOGLEVEL=info >> /etc/ecs/ecs.config
+           docker run --name ecs-agent --detach=true --restart=on-failure:10 --volume=/var/run:/var/run --volume=/var/log/ecs/:/log --volume=/var/lib/ecs/data:/data --volume=/etc/ecs:/etc/ecs --net=host --env-file=/etc/ecs/ecs.config amazon/amazon-ecs-agent:latest
+
+  EC2Instance4:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-0756fbca465a59a30
+      #AssociatePublicIpAddress: false
+      BlockDeviceMappings:
+        - DeviceName: "/dev/xvda"
+          Ebs:
+            VolumeSize: "100"
+            VolumeType: "gp2"
+            DeleteOnTermination: true
+      KeyName: docker
+      SecurityGroupIds:
+        - !Ref Port443SG
+        - !Ref Port8080SG
+        - !Ref Port8090SG
+        - !Ref Port7180SG
+        - !Ref Port22SG
+        #- sg-cd58fbbb
+        #- sg-0e208378
+        #- sg-c230528b
+      InstanceType: t2.micro
+      IamInstanceProfile: ecs-role
+      SubnetId: !FindInMap [environment, !Ref "Environment", VPCSubnet2]
+      Tags:
+        - Key: "Name"
+          Value: !Sub ${Environment}-pdftronserver-2
+      UserData:
+        Fn::Base64: |
+           #!/bin/bash
+           yum install docker -y
+           service docker start
+           mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
+           mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
+           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
+           echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
+           echo ECS_LOGFILE=/log/ecs-agent.log >> /etc/ecs/ecs.config
+           echo ECS_AVAILABLE_LOGGING_DRIVERS=["json-file","awslogs"] >> /etc/ecs/ecs.config
+           echo ECS_LOGLEVEL=info >> /etc/ecs/ecs.config
+           docker run --name ecs-agent --detach=true --restart=on-failure:10 --volume=/var/run:/var/run --volume=/var/log/ecs/:/log --volume=/var/lib/ecs/data:/data --volume=/etc/ecs:/etc/ecs --net=host --env-file=/etc/ecs/ecs.config amazon/amazon-ecs-agent:latest
