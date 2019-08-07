@@ -2,7 +2,7 @@ pipeline {
     agent {
         label'master'
     }
-    paraemters {
+    parameters {
         choice(name: 'Environment', choices: ['dev', 'qa'], description: 'cft target Environment',)
         string(name: 'StackName', defaultValue: '', description: 'cft stackname',)
     }
