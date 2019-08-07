@@ -26,7 +26,7 @@ pipeline {
         }
         stage('deploy qa stack') {
             when {
-                expresssion { params.Environment == 'qa' }
+                expression { params.Environment == 'qa' }
             }
             steps {
                 sh """
