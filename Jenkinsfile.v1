@@ -17,7 +17,7 @@ pipeline {
         }
         stage('deploy dev stack') {
             when {
-                expression { params.Environment == 'dev' }
+                expression { params.target_environment == 'dev' }
             }
             steps {
                 sh """
@@ -27,11 +27,11 @@ pipeline {
         }
         stage('deploy qa stack') {
             when {
-                expression { params.Environment == 'qa' }
+                expression { params.target_environment == 'qa' }
             }
             steps {
                 sh """
-                ansible-playbook  --extra-vars "ansible_python_interpreter=/usr/bin/python stack_name=${StackName} state=${state} Environment=${Environment}" ${WORKSPACE}/CFT.yaml --capabilities CAPABILITY_NAMED_IAM
+                ansible-playbook  --extra-vars "ansible_python_interpreter=/usr/bin/python stack_name=${stack_name} state=${state} Environment=${target_environment}" ${WORKSPACE}/CFT.yaml
                 """
             }
         }
