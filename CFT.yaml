@@ -15,3 +15,5 @@
       #region: "{{ aws_region }}"
       disable_rollback: true
       template: "CFTenv.yaml"
+      template_parameters:
+        Environment: "{{ Environment }}"
