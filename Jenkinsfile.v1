@@ -3,9 +3,9 @@ pipeline {
         label'master'
     }
     parameters {
-        choice(name: 'Environment', choices: ['dev', 'qa'], description: 'cft target Environment',)
+        choice(name: 'target_environment', choices: ['dev', 'qa'], description: 'cft target Environment',)
         choice(name:'state', choices: ['present', 'absent'], description: 'cft build or teardown condition',)
-        string(name: 'StackName', defaultValue: '', description: 'cft stackname',)
+        string(name: 'stack_name', defaultValue: '', description: 'cft stackname',)
     }
     stages {
         stage('checkout scm') {
@@ -21,7 +21,7 @@ pipeline {
             }
             steps {
                 sh """
-                ansible-playbook  --extra-vars "ansible_python_interpreter=/usr/bin/python stack_name=${StackName} state=${state} Environment=${Environment}" ${WORKSPACE}/CFT.yaml
+                ansible-playbook  --extra-vars "ansible_python_interpreter=/usr/bin/python stack_name=${stack_name} state=${state} Environment=${target_environment}" ${WORKSPACE}/CFT.yaml
                 """
             }
         }
