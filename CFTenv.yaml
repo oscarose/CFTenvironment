@@ -1193,7 +1193,7 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
            #!/bin/bash -xe
-           yum update -y aws-cfn-bootstrap
+           #yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
@@ -1237,7 +1237,7 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
            #!/bin/bash -xe
-           yum update -y aws-cfn-bootstrap
+           #yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
@@ -1281,7 +1281,7 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
            #!/bin/bash -xe
-           yum update -y aws-cfn-bootstrap
+           #yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
@@ -1325,7 +1325,7 @@ Resources:
       UserData:
         Fn::Base64: !Sub |
            #!/bin/bash -xe
-           yum update -y aws-cfn-bootstrap
+           #yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
