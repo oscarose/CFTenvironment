@@ -1191,13 +1191,14 @@ Resources:
         - Key: "Name"
           Value: !Sub ${Environment}-alfresco-1
       UserData:
-        Fn::Base64: |
-           #!/bin/bash
+        Fn::Base64: !Sub |
+           #!/bin/bash -xe
+           yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER=${Environment}-alfresco-zez >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
@@ -1234,13 +1235,14 @@ Resources:
         - Key: "Name"
           Value: !Sub ${Environment}-alfresco-2
       UserData:
-        Fn::Base64: |
-           #!/bin/bash
+        Fn::Base64: !Sub |
+           #!/bin/bash -xe
+           yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER=${Environment}-alfresco-zez >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
@@ -1277,13 +1279,14 @@ Resources:
         - Key: "Name"
           Value: !Sub ${Environment}-pdftronserver-1
       UserData:
-        Fn::Base64: |
-           #!/bin/bash
+        Fn::Base64: !Sub |
+           #!/bin/bash -xe
+           yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER=${Environment}-alfresco-zez >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
@@ -1320,13 +1323,14 @@ Resources:
         - Key: "Name"
           Value: !Sub ${Environment}-pdftronserver-2
       UserData:
-        Fn::Base64: |
-           #!/bin/bash
+        Fn::Base64: !Sub |
+           #!/bin/bash -xe
+           yum update -y aws-cfn-bootstrap
            yum install docker -y
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER=${Environment}-alfresco-zez >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
