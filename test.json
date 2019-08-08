@@ -42,7 +42,7 @@
       "Default": "qa",
       "AllowedValues": [
         "qa",
-        "stage"
+        "dev"
       ]
     },
     "StackName": {
@@ -72,17 +72,17 @@
         "PdftronserverlogGroup": "/ecs/qa-zez-pdftronserver",
         "PdftronclientlogGroup": "/ecs/qa-zez-pdftronclient"
       },
-      "stage": {
+      "dev": {
         "VpcId": "vpc-0344f3d7fbe904f2a",
         "VPCSubnet1": "subnet-094b2028c130f5042",
         "VPCSubnet2": "subnet-0fea883f5a4d5394e",
         "SSLCert": "arn:aws:acm:us-east-1:187212085277:certificate/f6f82b33-4b58-47fb-9f4d-8984c93aae0c",
-        "AlfrescologGroup": "/ecs/stage-zez-alfresco",
-        "SharelogGroup": "/ecs/stage-zez-share",
-        "DownloadlogGroup": "/ecs/stage-zez-download",
-        "TokenlogGroup": "/ecs/stage-zez-token",
-        "PdftronserverlogGroup": "/ecs/stage-zez-pdftronserver",
-        "PdftronclientlogGroup": "/ecs/stage-zez-pdftronclient"
+        "AlfrescologGroup": "/ecs/dev-zez-alfresco",
+        "SharelogGroup": "/ecs/dev-zez-share",
+        "DownloadlogGroup": "/ecs/dev-zez-download",
+        "TokenlogGroup": "/ecs/dev-zez-token",
+        "PdftronserverlogGroup": "/ecs/dev-zez-pdftronserver",
+        "PdftronclientlogGroup": "/ecs/dev-zez-pdftronclient"
       }
     }
   },
@@ -1307,20 +1307,6 @@
         "ExecutionRoleArn": "ECSRole",
         "Family": "${Environment}-zez-alfresco",
         "NetworkMode": "host",
-        "PlacementConstraints": [
-          {
-            "Type": "memberOf",
-            "Expression": "attribute:Name == alfresco"
-          },
-          {
-            "Type": "memberOf",
-            "Expression": "attribute:group == alfresco-server"
-          },
-          {
-            "Type": "memberOf",
-            "Expression": "attribute:group == ec2-alfresco"
-          }
-        ],
         "RequiresCompatibilities": [
           "EC2"
         ],
@@ -1737,20 +1723,6 @@
         ],
         "Family": "${Environment}-zez-pdftronserver",
         "NetworkMode": "host",
-        "PlacementConstraints": [
-          {
-            "Type": "memberOf",
-            "Expression": "attribute:Name == pdftron"
-          },
-          {
-            "Type": "memberOf",
-            "Expression": "attribute:group == pdftron-server"
-          },
-          {
-            "Type": "memberOf",
-            "Expression": "attribute:group == ec2-pdftron"
-          }
-        ],
         "RequiresCompatibilities": [
           "EC2"
         ]

@@ -1197,7 +1197,7 @@ Resources:
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
@@ -1240,7 +1240,7 @@ Resources:
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
@@ -1283,7 +1283,7 @@ Resources:
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
@@ -1326,7 +1326,7 @@ Resources:
            service docker start
            mkdir -p /etc/ecs && touch /etc/ecs/ecs.config
            mkdir -p /var/log/ecs && mkdir -p /var/lib/ecs/data
-           echo ECS_CLUSTER=!Sub ${Environment}-alfresco-zez >> /etc/ecs/ecs.config
+           echo ECS_CLUSTER="!Sub ${Environment}-alfresco-zez" >> /etc/ecs/ecs.config
            echo ECS_DATADIR=/data >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE=true >> /etc/ecs/ecs.config
            echo ECS_ENABLE_TASK_IAM_ROLE_NETWORK_HOST=true >> /etc/ecs/ecs.config
