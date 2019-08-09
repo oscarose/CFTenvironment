@@ -17,3 +17,18 @@
       template: "CFTenv.yaml"
       template_parameters:
         Environment: "{{ Environment }}"
+    when: state == present
+
+  - name: "deleting test CFT stack in {{ Environment }} environment"
+    cloudformation:
+      #aws_access_key: "{{ aws_access_key }}"
+      #aws_secret_key: "{{ aws_secret_key }}"
+      stack_name: "{{ stack_name }}"
+      state: "{{ state }}"
+      #region: "{{ aws_region }}"
+      disable_rollback: true
+      template: "CFTenv.yaml"
+      template_parameters:
+        Environment: "{{ Environment }}"
+    when: state == absent
+
