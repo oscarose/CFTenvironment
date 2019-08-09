@@ -17,7 +17,7 @@
       template: "CFTenv.yaml"
       template_parameters:
         Environment: "{{ Environment }}"
-    when: state == present
+    when: state == "present"
 
   - name: "deleting test CFT stack in {{ Environment }} environment"
     cloudformation:
@@ -30,5 +30,5 @@
       template: "CFTenv.yaml"
       template_parameters:
         Environment: "{{ Environment }}"
-    when: state == absent
+    when: state  == "absent"
 
