@@ -19,7 +19,9 @@ pipeline {
                 expression { params.Environment == 'dev' }
             }
             steps {
+                sh """
                 aws cloudformation create-stack --stack-name ${params.StackName} --template-body file://CFTenv.yaml --parameters ParameterKey=Environment,ParameterValue=dev --capabilities CAPABILITY_NAMED_IAM
+                """
             }
         }
         stage('deploy qa stack') {
